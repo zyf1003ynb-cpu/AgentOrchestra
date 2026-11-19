@@ -6,19 +6,51 @@ import { getDshAcpCommand } from "./dsh-command.mjs";
 
 export const DSH_MODEL_VALUE = '["deepseek-account","deepseek-flash"]';
 export const DSH_MODEL_NAME = "DeepSeek-V41-Flash";
-export const DSH_ACP_COMMAND = getDshAcpCommand();
 
 export class DshAcpWorker {
-  constructor({ teamMode, identityResolver = resolveWorkspaceIdentity, clientFactory, onEvent } = {}) {
+  constructor({ teamMode, identityResolver = resolveWorkspaceIdentity, clientFactory, onEvent, registry, profiles } = {}) {
     if (!teamMode || !identityResolver) throw new TypeError("teamMode and identityResolver are required");
     this.teamMode = teamMode;
     this.identityResolver = identityResolver;
-    this.clientFactory = clientFactory ?? ((options) => new AcpSession({ command: DSH_ACP_COMMAND, args: ["--profile", "acp"] }, { cwd: options.workspaceRoot, allowedPaths: options.allowedPaths }));
+    this.registry = registry;
+    this.profiles = profiles;
+    this.clientFactory = clientFactory ?? ((options) => new AcpSession(options.agent ?? { command: getDshAcpCommand(), args: ["--profile", "acp"] }, { cwd: options.workspaceRoot, allowedPaths: options.allowedPaths }));
     this.onEvent = onEvent;
     this.tasks = new Map();
   }
 
   async startFrontendTask({ workspaceRoot, prompt, allowedPaths = [], timeoutMs = 900000 } = {}) {
+    if (this.profiles && (await this.profiles.get(workspaceRoot)).profile !== "standard") throw new Error("fixed frontend dispatch requires fixed assignment mode");
+    return this.#startTask({
+      workspaceRoot, prompt, allowedPaths, timeoutMs, role: "frontend", agentId: "dsh",
+      agent: { id: "dsh", displayName: "DeepSeek Harness", command: getDshAcpCommand(), args: ["--profile", "acp"] },
+      modelValue: DSH_MODEL_VALUE, expectedModelName: DSH_MODEL_NAME,
+    });
+  }
+
+  async startAgentTask({ workspaceRoot, prompt, role, agentId, providerId, modelId, allowedPaths = [], timeoutMs = 900000 } = {}) {
+    if (typeof workspaceRoot !== "string" || !workspaceRoot.trim()) throw new TypeError("workspaceRoot is required");
+    if (!this.registry || !this.profiles) throw new Error("automatic agent dispatch is not configured");
+    const profile = await this.profiles.get(workspaceRoot);
+    if (profile.profile !== "auto") throw new Error("generic agent dispatch requires automatic assignment mode");
+    if (agentId === "codex") throw new Error("Codex-native tasks must be assigned through the current Codex session");
+    if (typeof providerId !== "string" || !providerId.trim() || typeof modelId !== "string" || !modelId.trim()) throw new TypeError("providerId and modelId are required");
+    if (typeof role !== "string" || !role.trim()) throw new TypeError("role is required");
+
+    const agent = await this.registry.getAgent(agentId);
+    const verified = (agent.verifiedModels ?? []).some((item) => item.providerId === providerId && item.modelId === modelId);
+    if (!verified) throw new Error("the selected provider/model must be verified before automatic dispatch");
+    const probe = await this.registry.probeAgent(agentId, { cwd: workspaceRoot });
+    const model = probe.models.find((item) => item.providerId === providerId && item.modelId === modelId);
+    if (!probe.connected || !model) throw new Error("the selected provider/model is not currently advertised by this agent");
+
+    return this.#startTask({
+      workspaceRoot, prompt, allowedPaths, timeoutMs, role: role.trim(), agentId,
+      agent, modelValue: JSON.stringify([providerId, modelId]), expectedModelName: model.name,
+    });
+  }
+
+  async #startTask({ workspaceRoot, prompt, allowedPaths, timeoutMs, role, agentId, agent, modelValue, expectedModelName }) {
     if (typeof workspaceRoot !== "string" || !workspaceRoot.trim()) throw new TypeError("workspaceRoot is required");
     if (typeof prompt !== "string" || !prompt.trim()) throw new TypeError("prompt is required");
     if (!Array.isArray(allowedPaths) || allowedPaths.some((item) => typeof item !== "string" || path.isAbsolute(item) || item.split(/[\\/]/).includes(".."))) throw new TypeError("allowedPaths must be workspace-relative paths");
@@ -28,17 +60,17 @@ export class DshAcpWorker {
     const identity = await this.identityResolver(workspaceRoot);
     if (mode.projectId && identity.projectId !== mode.projectId) throw new Error("workspace identity does not match team mode");
     const task = {
-      taskId: `dsh-${randomUUID()}`,
+      taskId: `${agentId}-${randomUUID()}`,
       workspaceRoot: path.resolve(workspaceRoot),
       projectId: identity.projectId,
-      role: "frontend",
-      agentId: "dsh",
-      agentName: "DeepSeek Harness",
+      role,
+      agentId,
+      agentName: agent.displayName,
       status: "running",
       prompt,
       allowedPaths: [...allowedPaths],
       timeoutMs,
-      modelValue: DSH_MODEL_VALUE,
+      modelValue,
       modelName: null,
       sessionId: null,
       result: null,
@@ -49,13 +81,16 @@ export class DshAcpWorker {
     };
     this.tasks.set(task.taskId, task);
     try {
-      const client = await this.clientFactory({ workspaceRoot: task.workspaceRoot, taskId: task.taskId, allowedPaths: task.allowedPaths });
+      const client = await this.clientFactory({ agent, workspaceRoot: task.workspaceRoot, taskId: task.taskId, allowedPaths: task.allowedPaths });
       task.client = client;
       await client.initialize();
       const opened = await client.newSession(task.workspaceRoot);
       task.sessionId = typeof opened === "string" ? opened : opened.sessionId;
-      const selected = await client.setModel(task.sessionId, DSH_MODEL_VALUE);
-      if (selected.value !== DSH_MODEL_VALUE || selected.name !== DSH_MODEL_NAME) throw new Error("ACP did not read back the exact DeepSeek-V41-Flash model");
+      const selected = await client.setModel(task.sessionId, modelValue);
+      if (selected.value !== modelValue || selected.name !== expectedModelName) {
+        const error = agentId === "dsh" ? "ACP did not read back the exact DeepSeek-V41-Flash model" : "ACP did not read back the exact selected model";
+        throw new Error(error);
+      }
       task.modelName = selected.name;
       task.updatedAt = new Date().toISOString();
       task.promise = this.#run(task, client);
@@ -71,7 +106,6 @@ export class DshAcpWorker {
       throw error;
     }
   }
-
   async getTeamTask({ workspaceRoot, taskId } = {}) {
     const task = this.tasks.get(taskId);
     if (!task) throw new Error("unknown task");
@@ -134,13 +168,15 @@ export class DshAcpWorker {
     task.modeMonitor.unref?.();
     try {
       const workPrompt = [
-        "You are the frontend worker in Sol's team.",
+        "You are an implementation agent assigned by Sol.",
+        `Assignment: ${task.role}`,
+        `Agent: ${task.agentName}`,
         `Workspace: ${task.workspaceRoot}`,
         `Allowed relative paths: ${task.allowedPaths.length ? task.allowedPaths.join(", ") : "the workspace, preserving unrelated files"}`,
-        "Implement the assigned frontend task, run focused checks, and report evidence. Do not modify files outside the workspace or add credentials.",
+        "Implement only the assigned task, run focused checks, and report evidence. Do not modify files outside the workspace or add credentials.",
         `Task: ${task.prompt}`,
-      ].join("\\n");
-      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`frontend task exceeded ${task.timeoutMs}ms`)), task.timeoutMs); task.timer = timer; });
+      ].join("\n");
+      const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`${task.agentId === "dsh" ? "frontend" : "agent"} task exceeded ${task.timeoutMs}ms`)), task.timeoutMs); task.timer = timer; });
       const result = await Promise.race([client.prompt(task.sessionId, workPrompt), timeout]);
       if (result?.stopReason === "cancelled") { task.cancelled = true; task.status = "cancelled"; task.updatedAt = new Date().toISOString(); this.#emit(task); return; }
       if (result?.stopReason !== "end_turn") throw new Error(`ACP task stopped with ${result?.stopReason ?? "unknown"}`);

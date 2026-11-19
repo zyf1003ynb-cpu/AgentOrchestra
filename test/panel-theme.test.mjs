@@ -8,8 +8,12 @@ const code = await readFile(new URL("../desktop/TeamModeControl/MainWindow.xaml.
 test("panel glass uses a light translucent palette instead of stacked opaque dark fills", () => {
   assert.match(xaml, /x:Key="TextMain" Color="#FF18282D"/);
   assert.match(xaml, /x:Key="TextSoft" Color="#FF52666B"/);
-  assert.match(xaml, /<Border x:Name="WindowShell"[^>]*Background="#BFEAF4F1"/s);
-  assert.match(xaml, /<Border CornerRadius="31" Background="#38EAF6F2"/);
+  assert.match(xaml, /<Border x:Name="WindowShell"[^>]*Background="Transparent"/s);
+  assert.match(xaml, /<Border CornerRadius="31">\s*<Border\.Background>\s*<LinearGradientBrush/s);
   assert.match(xaml, /<Border Background="#EDF5F9F7"[^>]*MinWidth="180"/);
-  assert.match(code, /GradientColor = unchecked\(\(int\)0x80F5EFE7\)/);
+  assert.doesNotMatch(code, /EnableAcrylicBackdrop|SetWindowCompositionAttribute|DllImport|StructLayout/);
+});
+test("fixed assignment checkbox references a defined glass checkbox style", () => {
+  assert.match(xaml, /<Style x:Key="GlassCheckBox" TargetType="CheckBox">/);
+  assert.match(xaml, /<Trigger Property="IsChecked" Value="True">[\s\S]*?<Setter TargetName="CheckMark" Property="Visibility" Value="Visible"\s*\/>/);
 });

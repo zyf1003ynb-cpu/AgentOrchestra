@@ -170,7 +170,8 @@ export async function probeAcpAgent(agent, { cwd } = {}) {
   const session = new AcpSession(agent, { cwd });
   try {
     const init = await session.initialize(); const opened = await session.newSession();
-    return { connected: true, agentInfo: init.agentInfo, connection: { protocol: "acp", transport: "stdio" }, capabilities: init.agentCapabilities ?? {}, models: advertisedModels(opened.configOptions), auth: init.authMethods?.length ? "available" : "unknown", checkedAt: new Date().toISOString() };
+    const models = advertisedModels(opened.configOptions);
+    return { connected: true, agentInfo: init.agentInfo, connection: { protocol: "acp", transport: "stdio" }, modelApi: { type: "acp", source: "agent" }, providers: [...new Set(models.map((model) => model.providerId).filter(Boolean))], capabilities: init.agentCapabilities ?? {}, models, auth: init.authMethods?.length ? "available" : "unknown", checkedAt: new Date().toISOString() };
   } finally { await session.close(); }
 }
 

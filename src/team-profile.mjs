@@ -19,15 +19,27 @@ export class TeamProfile {
     const filePath = await this.#path(workspaceRoot);
     try {
       const value = JSON.parse(await readFile(filePath, "utf8"));
-      if (value.profile !== "standard" || !this.#matchesStandard(value.roles)) return this.#default();
-      return { ...this.#default(), ...value, roles: { frontend: clone(STANDARD_FRONTEND), backend: clone(STANDARD_BACKEND) } };
+      if (value.profile === "auto" && (value.roles === undefined || value.roles === null)) {
+        return { profile: "auto", roles: null, updatedAt: value.updatedAt ?? null };
+      }
+      if (value.profile === "standard" && this.#matchesStandard(value.roles)) {
+        return { profile: "standard", roles: { frontend: clone(STANDARD_FRONTEND), backend: clone(STANDARD_BACKEND) }, updatedAt: value.updatedAt ?? null };
+      }
+      return this.#default();
     } catch { return this.#default(); }
   }
 
   async save(workspaceRoot, value) {
-    if (!value || value.profile !== "standard") throw new TypeError("only the standard team is supported in this release");
-    if (!this.#matchesStandard(value.roles)) throw new Error("standard team roles are fixed");
-    const saved = { profile: "standard", roles: { frontend: clone(STANDARD_FRONTEND), backend: clone(STANDARD_BACKEND) }, updatedAt: new Date().toISOString() };
+    let saved;
+    if (value?.profile === "auto") {
+      saved = { profile: "auto", roles: null, updatedAt: new Date().toISOString() };
+    } else if (value?.profile === "standard" && (value.roles == null || this.#matchesStandard(value.roles))) {
+      saved = { profile: "standard", roles: { frontend: clone(STANDARD_FRONTEND), backend: clone(STANDARD_BACKEND) }, updatedAt: new Date().toISOString() };
+    } else if (value?.profile === "standard") {
+      throw new Error("standard team roles are fixed");
+    } else {
+      throw new TypeError("profile must be auto or standard");
+    }
     const filePath = await this.#path(workspaceRoot);
     await mkdir(path.dirname(filePath), { recursive: true });
     const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
@@ -36,9 +48,7 @@ export class TeamProfile {
     return saved;
   }
 
-  #default() {
-    return { profile: "standard", roles: { frontend: clone(STANDARD_FRONTEND), backend: clone(STANDARD_BACKEND) }, updatedAt: null };
-  }
+  #default() { return { profile: "auto", roles: null, updatedAt: null }; }
 
   #matchesStandard(roles) {
     const frontend = roles?.frontend;

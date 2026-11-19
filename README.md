@@ -19,7 +19,7 @@ The DSH chat window does not need to stay open. The MCP service starts its ACP p
 - Codex templates for the GPT backend agent and the team workflow skill.
 - Tests and focused setup/validation documentation.
 
-The standard frontend/backend roles are fixed in this release. Other ACP agents can be added and inspected, but they do not automatically take over a team role. Team mode is a workflow guard, not an operating-system security boundary.
+The default team assignment is automatic: Sol checks the configured ACP agents and chooses suitable verified models, while Codex-native GPT agents are selected in the current Codex session. You can turn on the per-project fixed-role option to require DSH/DeepSeek V4.1 Flash for frontend work and a GPT subagent in Codex for backend work. Team mode is a workflow guard, not an operating-system security boundary.
 
 ## Development checks
 

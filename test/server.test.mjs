@@ -65,15 +65,20 @@ test("MCP exposes agent inventory and project team configuration", async () => {
   const listed = await server.handle({ jsonrpc: "2.0", id: 5, method: "tools/list", params: {} });
   assert.ok(listed.result.tools.some((tool) => tool.name === "list_agents"));
   const profileTool = listed.result.tools.find((tool) => tool.name === "save_team_profile");
-  assert.deepEqual(profileTool.inputSchema.properties.profile.enum, ["standard"]);
+  assert.deepEqual(profileTool.inputSchema.properties.profile.enum, ["auto", "standard"]);
+  const dispatchTool = listed.result.tools.find((tool) => tool.name === "submit_agent_task");
+  assert.equal(dispatchTool.inputSchema.properties.role.type, "string");
+  assert.ok(listed.result.tools.some((tool) => tool.name === "discover_agents"));
   const agents = await server.handle({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "list_agents", arguments: {} } });
   assert.deepEqual(JSON.parse(agents.result.content[0].text).map((agent) => agent.id), ["dsh", "codex"]);
   const config = await server.handle({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "team_configuration", arguments: { workspace_root: workspaceRoot } } });
   const value = JSON.parse(config.result.content[0].text);
-  assert.equal(value.profile, "standard");
-  assert.equal(value.roles.frontend.agentId, "dsh");
+  assert.equal(value.profile, "auto");
+  assert.equal(value.roles, null);
+  const fixed = await server.handle({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "save_team_profile", arguments: { workspace_root: workspaceRoot, profile: "standard" } } });
+  assert.equal(JSON.parse(fixed.result.content[0].text).roles.frontend.agentId, "dsh");
   const rejected = await server.handle({
-    jsonrpc: "2.0", id: 8, method: "tools/call",
+    jsonrpc: "2.0", id: 9, method: "tools/call",
     params: { name: "save_team_profile", arguments: { workspace_root: workspaceRoot, profile: "custom", roles: value.roles } },
   });
   assert.equal(rejected.error.code, -32602);
@@ -97,13 +102,14 @@ test("MCP exposes the real DSH task lifecycle and cancels project work when team
   });
   const call = (id, name, args) => server.handle({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   await call(1, "set_team_mode", { workspace_root: workspaceRoot, enabled: true });
-  const started = await call(2, "submit_frontend_task", { workspace_root: workspaceRoot, prompt: "implement the dashboard", allowed_paths: ["src"] });
+  await call(2, "save_team_profile", { workspace_root: workspaceRoot, profile: "standard" });
+  const started = await call(3, "submit_frontend_task", { workspace_root: workspaceRoot, prompt: "implement the dashboard", allowed_paths: ["src"] });
   const task = JSON.parse(started.result.content[0].text);
   assert.equal(task.status, "running");
-  const status = await call(3, "get_team_task", { workspace_root: workspaceRoot, task_id: task.taskId });
+  const status = await call(4, "get_team_task", { workspace_root: workspaceRoot, task_id: task.taskId });
   assert.equal(JSON.parse(status.result.content[0].text).modelName, "DeepSeek-V41-Flash");
-  await call(4, "set_team_mode", { workspace_root: workspaceRoot, enabled: false });
-  const result = await call(5, "get_team_task", { workspace_root: workspaceRoot, task_id: task.taskId });
+  await call(5, "set_team_mode", { workspace_root: workspaceRoot, enabled: false });
+  const result = await call(6, "get_team_task", { workspace_root: workspaceRoot, task_id: task.taskId });
   assert.equal(cancelNotified, true);
   assert.equal(JSON.parse(result.result.content[0].text).status, "cancelled");
 });

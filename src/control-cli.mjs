@@ -8,13 +8,14 @@ import { installCodexMcp } from "../scripts/install-codex.mjs";
 
 export async function runControlCommand({ command, workspaceRoot, projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), stateRoot, enabled, agentId, id, displayName, executable, args = [], modelId, providerId, profile, roles, registryProbe, modelVerifier, codexInstaller = installCodexMcp } = {}) {
   if (!stateRoot) throw new Error("state-root is required");
-  if (["status", "set", "configuration", "save-profile"].includes(command) && !workspaceRoot) throw new Error("workspace is required");
+  if (["status", "set", "configuration", "save-profile", "discover"].includes(command) && !workspaceRoot) throw new Error("workspace is required");
   const mode = new TeamMode({ stateStore: new StateStore(stateRoot) });
   const registry = new AgentRegistry({ stateRoot, probeCommand: registryProbe, verifyCommand: modelVerifier });
   const profiles = new TeamProfile({ stateRoot, registry });
   if (command === "status") return mode.status(workspaceRoot);
   if (command === "set") return mode.set(workspaceRoot, enabled === true);
   if (command === "agents") return registry.listAgents();
+  if (command === "discover") return registry.discoverAgents({ cwd: workspaceRoot ?? process.cwd() });
   if (command === "probe") {
     if (!agentId) throw new Error("agent-id is required");
     return registry.probeAgent(agentId, { cwd: workspaceRoot ?? process.cwd() });

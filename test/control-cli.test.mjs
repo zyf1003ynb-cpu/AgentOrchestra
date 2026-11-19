@@ -29,18 +29,17 @@ test("control bridge adds only an explicitly configured ACP agent", async () => 
   assert.deepEqual((await runControlCommand({ command: "agents", stateRoot, registryProbe })).map((item) => item.id), ["dsh", "codex", "local-agent"]);
 });
 
-test("control bridge rejects custom teams and saves only the fixed standard profile", async () => {
+test("control bridge saves automatic and optional fixed assignment profiles", async () => {
   const stateRoot = await temp("control-profile-");
   const workspaceRoot = await temp("control-workspace-");
   const roles = {
     frontend: { agentId: "dsh", providerId: "deepseek-account", modelId: "deepseek-flash" },
     backend: { agentId: "codex", providerId: "openai", modelId: "select-per-task" },
   };
-  await assert.rejects(
-    () => runControlCommand({ command: "save-profile", workspaceRoot, stateRoot, profile: "custom", roles }),
-    /only the standard team is supported/,
-  );
-  const value = await runControlCommand({ command: "save-profile", workspaceRoot, stateRoot, profile: "standard", roles });
+  await assert.rejects(() => runControlCommand({ command: "save-profile", workspaceRoot, stateRoot, profile: "custom", roles }), /auto or standard/);
+  const automatic = await runControlCommand({ command: "save-profile", workspaceRoot, stateRoot, profile: "auto" });
+  assert.equal(automatic.profile, "auto");
+  const value = await runControlCommand({ command: "save-profile", workspaceRoot, stateRoot, profile: "standard" });
   assert.equal(value.profile, "standard");
   assert.deepEqual(value.roles, roles);
 });

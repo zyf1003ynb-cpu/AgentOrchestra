@@ -27,6 +27,33 @@ test("registry exposes only built-ins and explicitly added ACP agents", async ()
   assert.equal(probe.credentials, undefined);
 });
 
+test("discovery reports ACP API, providers, models, and keeps a registered offline agent", async () => {
+  const root = await temp("agents");
+  let offline = false;
+  const registry = new AgentRegistry({ stateRoot: root, probeCommand: async () => {
+    if (offline) throw new Error("not reachable");
+    return { connected: true, connection: { protocol: "acp", transport: "stdio" }, models: [
+      { id: "model-a", providerId: "provider-a", name: "Model A" },
+      { id: "model-b", providerId: "provider-b", name: "Model B" },
+    ] };
+  } });
+  await registry.addAcpAgent({ id: "multi-provider", displayName: "Multi Provider", command: "multi-provider-acp" });
+  offline = true;
+  const discovered = await registry.discoverAgents();
+  const agent = discovered.find(item => item.id === "multi-provider");
+  const registered = await registry.getAgent("multi-provider");
+  assert.equal(registered.id, "multi-provider");
+  assert.equal(agent.availability, "unavailable");
+  assert.equal(agent.connected, false);
+  assert.deepEqual((await registry.listAgents()).map(item => item.id), ["dsh", "codex", "multi-provider"]);
+  assert.equal(agent.modelApi.type, "acp");
+  assert.deepEqual(agent.providers, []);
+  offline = false;
+  const online = (await registry.discoverAgents()).find(item => item.id === "multi-provider");
+  assert.deepEqual(online.providers, ["provider-a", "provider-b"]);
+  assert.deepEqual(online.models.map(model => model.name), ["Model A", "Model B"]);
+});
+
 test("registry rejects credentials and invalid ACP commands", async () => {
   const root = await temp("agents");
   const registry = new AgentRegistry({ stateRoot: root, probeCommand: async () => { throw new Error("not reachable"); } });

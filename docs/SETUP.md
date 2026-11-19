@@ -12,7 +12,7 @@ Python is not used by this project. A packaged installer is not included in vers
 
 ## Configure DeepSeek Harness
 
-The app does not assume a particular installation folder. Its built-in DSH agent runs `dsh.cmd --profile acp` on Windows, or `dsh --profile acp` elsewhere. If the command is not on `PATH`, set the `SOL_DSH_ACP_COMMAND` user environment variable to the full path of the ACP launcher, for example:
+The app first checks the DeepSeek Harness installation registered with Windows and uses its bundled `dsh.cmd --profile acp` launcher. On other platforms it uses `dsh --profile acp`. You can override the command with the `SOL_DSH_ACP_COMMAND` user environment variable if the automatic lookup does not find your installation, for example:
 
 ```powershell
 setx SOL_DSH_ACP_COMMAND "C:\path\to\dsh.cmd"
@@ -35,7 +35,7 @@ The installer does not log in to a browser or change Codex credentials. Team sta
 
 Open the control panel, select the project, and use the switch. Keep using the existing Codex conversation. DSH's normal chat window does not need to stay open; its ACP process is started for a dispatched frontend task. The GPT backend agent is started by the active Codex session and its activity is shown in Codex's own agent view.
 
-Added agents must be explicitly configured as ACP stdio programs. The app does not scan the computer. Model verification sends a real request and may use provider quota.
+Agent discovery checks the built-in DSH entry and ACP agents you explicitly added. It reads the API/protocol, provider IDs, published models, and advertised capabilities from the ACP handshake. Codex-native model choices stay in the active Codex session and are not enumerated by that ACP scan. Added agents must be explicitly configured as ACP stdio programs; the app does not scan the computer. Model verification sends a real request and may use provider quota. The default project assignment lets Sol choose among detected, available, verified agents and models. The optional fixed-role switch pins frontend work to DSH/DeepSeek V4.1 Flash and backend work to a GPT subagent in Codex.
 
 ## Development checks
 

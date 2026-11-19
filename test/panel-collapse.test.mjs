@@ -15,8 +15,10 @@ test("the compact island keeps a visible expand control and a separate close con
 });
 
 test("interactive header buttons do not start window dragging", () => {
-  const dragHandler = code.match(/private void Header_MouseLeftButtonDown\([\s\S]*?\n    }/)?.[0] ?? "";
-  assert.match(dragHandler, /IsInsideButton\(e\.OriginalSource as DependencyObject\)/);
+  const dragHandler = code.match(/private void WindowShell_PreviewMouseLeftButtonDown\([\s\S]*?\n    }/)?.[0] ?? "";
+  assert.match(dragHandler, /IsInsideInteractiveControl\(e\.OriginalSource as DependencyObject\)/);
   assert.match(dragHandler, /DragMove\(\)/);
-  assert.match(code, /private static bool IsInsideButton\(DependencyObject\? element\)/);
+  assert.match(code, /private static bool IsInsideInteractiveControl\(DependencyObject\? element\)/);
+  assert.match(code, /element is ButtonBase or TextBoxBase or ComboBox or Thumb or ScrollBar/);
+  assert.doesNotMatch(code, /element is [^;]*ScrollViewer/);
 });

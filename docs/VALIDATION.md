@@ -10,7 +10,7 @@ npm run check
 dotnet build desktop\TeamModeControl\TeamModeControl.csproj --configuration Release
 ```
 
-The Node test suite covers team state, workspace identity, agent discovery, DSH task lifecycle, Codex configuration installation, and panel UI structure. The syntax check covers project JavaScript modules. The Release build verifies the WPF control panel compiles.
+The Node test suite covers team state, workspace identity, ACP discovery and model/provider data, automatic and fixed assignment modes, DSH task lifecycle, Codex configuration installation, and panel UI structure. The syntax check covers project JavaScript modules. The Release build verifies the WPF control panel compiles.
 
 ## Environment-specific checks
 

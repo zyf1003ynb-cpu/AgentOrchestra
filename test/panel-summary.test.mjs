@@ -5,5 +5,5 @@ import test from "node:test";
 const code = await readFile(new URL("../desktop/TeamModeControl/MainWindow.xaml.cs", import.meta.url), "utf8");
 
 test("agent summary stays short enough for the compact status row", () => {
-  assert.ok(/AgentSummary\.Text = customCount == 0\s*\? "2 个内置 Agent · DSH：ACP · Codex：GPT"/.test(code), "summary should fit on one short status line");
+  assert.ok(code.includes('AgentSummary.Text = $"Agent {agentOptions.Count} · ACP 在线 {connected} · 模型 {modelCount}"'));
 });

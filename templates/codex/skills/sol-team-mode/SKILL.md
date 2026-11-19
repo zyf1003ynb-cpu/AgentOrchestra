@@ -1,18 +1,18 @@
 ---
 name: sol-dsh-codex-team
-description: Use when implementing code for a project whose Sol + DSH + Codex team mode is enabled; check the project's mode first and follow the fixed frontend and GPT backend roles.
+description: Use when implementing code for a project whose Sol + DSH + Codex team mode is enabled; check the project's mode first, then follow its optional fixed role setting or automatically assign work from discovered agents.
 ---
 
 # Sol + DSH + Codex team workflow
 
-Before doing implementation work, call `team_mode_status` with the exact project root open in the current Codex conversation. If it is enabled, call `team_configuration` for that same root. If the tools fail or the workspace identity does not match, stop and report that the team state cannot be confirmed.
+Before implementation work, call team_mode_status with the exact project root open in the current Codex conversation. If enabled, call team_configuration for that same root. If either tool fails or the workspace identity does not match, stop and report that team state cannot be confirmed.
 
-When team mode is OFF, follow the normal Codex workflow.
+When team mode is OFF, use the normal Codex workflow.
 
-When team mode is ON, Sol plans, defines shared contracts, assigns work, integrates results, and reviews. Keep these implementation roles fixed:
+When team mode is ON, Sol remains the coordinator: plan the work, set shared contracts, delegate, integrate, and review.
 
-- Frontend files and frontend-only tests: submit them through `submit_frontend_task` to DSH and require the exact DeepSeek-V41-Flash selection. Check its task state with `get_team_task`; use `cancel_team_task` for cancellation and report success only after the worker confirms it.
-- Backend, API, database, infrastructure, and backend-only tests: assign the task to the `backend-gpt` Codex subagent. Select an available GPT model explicitly for that spawn. If no GPT model can be selected, the subagent cannot start, or its selected model cannot be confirmed, stop and report the blocker. Never implement the assigned backend work in Sol as a fallback.
-- Full-stack tasks: first write down the API/data contract and divide file ownership so the two workers do not edit the same files. Then dispatch the frontend and backend portions. Keep shared contract files with one named owner; if safe ownership is unclear, sequence the tasks.
+- If the profile is standard, keep the fixed assignments: send frontend-only work and tests to DSH through submit_frontend_task, requiring exact DeepSeek V4.1 Flash model readback. Assign backend, API, database, infrastructure, and backend-only tests to the backend-gpt Codex subagent and explicitly select an available GPT model in the current Codex session.
+- If the profile is auto, call discover_agents first. Sol chooses suitable available agents and models for each subtask, validates file ownership, and chooses safe parallelism or sequence. For an ACP agent, the exact provider/model must be currently advertised and verified with verify_agent_model before dispatch through submit_agent_task. Supply role with Sol's concrete task assignment. For Codex-native work, use the current Codex session's native subagent and select the GPT model there; do not claim that the local ACP scan discovered Codex session models.
+- For full-stack tasks, define the API/data contract and file ownership before parallel work. Keep shared contract files with one named owner. Sequence tasks if ownership would overlap.
 
-Sol may inspect changes, review the work, run integration checks, and ask the assigned worker to fix issues. Sol must not take over implementation files from either role. Never silently change an Agent or model, add an unverified Agent to the active team, or report a task as cancelled before confirmation. Turning team mode OFF blocks new DSH team tasks; if a backend subagent is still running, report its status and where to stop it in Codex.
+For every delegated task, inspect completion evidence, run integration checks, and report remaining blockers. Never silently substitute an unavailable agent or model. If no compatible verified agent is available, explain the blocker and ask before changing the configured assignment. Turning team mode OFF blocks new ACP team tasks; if a Codex subagent is still running, report its status and where to stop it in Codex.

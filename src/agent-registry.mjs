@@ -4,12 +4,11 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { probeAcpAgent, verifyAcpModel } from "./adapters/acp-agent.mjs";
 import { getDshAcpCommand } from "./dsh-command.mjs";
 
-export const DSH_ACP_COMMAND = getDshAcpCommand();
 const DSH_ARGS = ["--profile", "acp"];
 const BUILT_INS = [
   {
     id: "dsh", displayName: "DeepSeek Harness", runtime: "dsh",
-    command: DSH_ACP_COMMAND, args: DSH_ARGS,
+    args: DSH_ARGS,
     connection: { protocol: "acp", transport: "stdio", source: "built-in" },
     modelApi: { type: "unknown", source: "unknown" },
     provider: { id: null, source: "agent" }, models: [],
@@ -30,17 +29,27 @@ export class AgentRegistry {
   constructor({ stateRoot, probeCommand, verifyCommand } = {}) {
     if (!stateRoot) throw new TypeError("stateRoot is required");
     this.stateRoot = path.resolve(stateRoot); this.filePath = path.join(this.stateRoot, "agents.json");
-    this.probeCommand = probeCommand; this.verifyCommand = verifyCommand; this.cache = new Map();
+    this.probeCommand = probeCommand; this.verifyCommand = verifyCommand; this.cache = new Map(); this.dshCommand = null;
   }
 
   async listAgents() {
     const saved = await this.#readSaved();
     const builtIns = BUILT_INS.map((agent) => {
       const stored = saved.find((item) => item.id === agent.id);
-      return { ...clone(agent), ...(stored ? { verifiedModels: stored.verifiedModels ?? [], lastProbe: stored.lastProbe } : {}) };
+      if (agent.id === "dsh") this.dshCommand ??= getDshAcpCommand();
+      return { ...clone(agent), ...(agent.id === "dsh" ? { command: this.dshCommand } : {}), ...(stored ? { verifiedModels: stored.verifiedModels ?? [], lastProbe: stored.lastProbe } : {}) };
     });
     return [...builtIns, ...saved.filter((agent) => !BUILT_INS.some((builtIn) => builtIn.id === agent.id)).map(clone)];
   }
+  async discoverAgents({ cwd = process.cwd() } = {}) {
+    const agents = await this.listAgents();
+    return Promise.all(agents.map(async (agent) => {
+      if (agent.id === "codex") return { ...agent, availability: "session-managed", checkedAt: null };
+      const probe = await this.probeAgent(agent.id, { cwd });
+      return { ...probe, availability: probe.connected ? "available" : "unavailable" };
+    }));
+  }
+
   async getAgent(agentId) { const agent = (await this.listAgents()).find((item) => item.id === agentId); if (!agent) throw new Error(`Unknown agent: ${agentId}`); return agent; }
 
   async probeAgent(agentId, { cwd = process.cwd() } = {}) {
@@ -50,7 +59,7 @@ export class AgentRegistry {
       const response = await (this.probeCommand ? this.probeCommand(agent, { cwd }) : probeAcpAgent(agent, { cwd }));
       return this.#normaliseProbe(agent, response);
     } catch (error) {
-      return { ...clone(agent), connected: false, models: [], capabilities: [], auth: "unknown", error: error instanceof Error ? error.message : String(error), checkedAt: new Date().toISOString() };
+      return this.#normaliseProbe(agent, { connected: false, models: [], capabilities: [], auth: "unknown", error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -119,7 +128,7 @@ export class AgentRegistry {
   }
   #normaliseProbe(agent, result = {}) {
     const models = Array.isArray(result.models) ? result.models.map((model) => ({ ...model, id: model.id ?? model.modelId, modelId: model.modelId ?? model.id, name: model.name ?? model.modelId ?? model.id, status: ["verified", "supported", "unknown"].includes(model.status) ? model.status : "unknown", capabilities: Array.isArray(model.capabilities) ? [...model.capabilities] : [] })).filter((model) => typeof model.id === "string") : [];
-    return { ...clone(agent), ...clone(result), connected: result.connected !== false, checkedAt: result.checkedAt ?? new Date().toISOString(), modelApi: result.modelApi ?? agent.modelApi ?? { type: "unknown", source: "unknown" }, provider: result.provider ?? agent.provider ?? { id: null, source: "unknown" }, models, capabilities: Array.isArray(result.capabilities) ? [...result.capabilities] : [] };
+    return { ...clone(agent), ...clone(result), connected: result.connected !== false, checkedAt: result.checkedAt ?? new Date().toISOString(), modelApi: result.modelApi ?? ((result.connection?.protocol ?? agent.connection?.protocol) ? { type: result.connection?.protocol ?? agent.connection?.protocol, source: "agent" } : agent.modelApi ?? { type: "unknown", source: "unknown" }), provider: result.provider ?? agent.provider ?? { id: null, source: "unknown" }, providers: Array.isArray(result.providers) ? [...result.providers] : [...new Set(models.map((model) => model.providerId).filter(Boolean))], models, capabilities: result.capabilities ?? [] };
   }
   async #readSaved() {
     try { const parsed = JSON.parse(await readFile(this.filePath, "utf8")); const agents = Array.isArray(parsed) ? parsed : parsed.agents; return Array.isArray(agents) ? agents : []; }

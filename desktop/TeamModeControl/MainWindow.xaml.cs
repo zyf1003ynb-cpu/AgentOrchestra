@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Windows;
@@ -22,6 +21,7 @@ public partial class MainWindow : Window
     private static readonly string StateRoot = Path.Combine(ProjectRoot, "state");
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(3) };
     private readonly List<ModelOption> _agentModels = [];
+    private readonly Dictionary<string, JsonObject> _agentDiscovery = new(StringComparer.Ordinal);
     private string _workspaceRoot = "";
     private bool _enabled;
     private bool _expanded = true;
@@ -50,36 +50,35 @@ public partial class MainWindow : Window
         ProjectPathText.Text = string.IsNullOrWhiteSpace(_workspaceRoot) ? "尚未选择" : _workspaceRoot;
         ProjectPathText.ToolTip = _workspaceRoot;
         if (!string.IsNullOrWhiteSpace(_workspaceRoot)) await RefreshAllAsync();
-        else FooterStatus.Text = "先选择项目；开关状态会按项目分别保存。";
+        else { FooterStatus.Text = "先选择项目；开关状态会按项目分别保存。"; await RefreshAgentsAsync(); }
         _statusTimer.Start();
     }
 
-    private void Window_SourceInitialized(object? sender, EventArgs e)
+    private void WindowShell_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        try
+        if (IsInsideInteractiveControl(e.OriginalSource as DependencyObject)) return;
+        if (e.LeftButton == MouseButtonState.Pressed)
         {
-            var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
-            EnableAcrylicBackdrop(handle);
+            try { DragMove(); }
+            catch (InvalidOperationException) { /* The mouse may have been released during the drag handoff. */ }
         }
-        catch { /* Custom glass layers remain readable if Windows backdrop support is unavailable. */ }
     }
 
-    private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (IsInsideButton(e.OriginalSource as DependencyObject)) return;
-        if (e.LeftButton == MouseButtonState.Pressed) DragMove();
-    }
-
-    private static bool IsInsideButton(DependencyObject? element)
+    private static bool IsInsideInteractiveControl(DependencyObject? element)
     {
         while (element is not null)
         {
-            if (element is ButtonBase) return true;
+            if (element is ButtonBase or TextBoxBase or ComboBox or Thumb or ScrollBar) return true;
             element = element is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
                 ? System.Windows.Media.VisualTreeHelper.GetParent(element)
                 : LogicalTreeHelper.GetParent(element);
         }
         return false;
+    }
+    private void GlassContent_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var bounds = GlassContent.RenderSize;
+        GlassContent.Clip = new RectangleGeometry(new Rect(0, 0, bounds.Width, bounds.Height), 31, 31);
     }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
@@ -114,9 +113,11 @@ public partial class MainWindow : Window
             var result = await ControlCommandAsync("set", "--workspace", _workspaceRoot, "--enabled", (!_enabled).ToString().ToLowerInvariant());
             _enabled = result?["enabled"]?.GetValue<bool>() ?? !_enabled;
             UpdateModeVisual();
-            FooterStatus.Text = _enabled
-                ? "团队模式已开启。前端派给 DSH；后端由 Sol 在 Codex 会话选择 GPT。"
-                : "团队模式已关闭。当前 Codex 对话恢复普通工作方式。";
+            FooterStatus.Text = !_enabled
+                ? "团队模式已关闭。当前 Codex 对话恢复普通工作方式。"
+                : FixedAssignmentToggle.IsChecked == true
+                    ? "团队模式已开启：按固定分工派发前端与后端任务。"
+                    : "团队模式已开启：Sol 自主分配任务。";
             await RefreshModeAsync(quiet: true);
         });
     }
@@ -144,7 +145,7 @@ public partial class MainWindow : Window
                 ? $"已验证：{model.DisplayName} · 当前 ACP 会话可以设置并回读精确模型。"
                 : "验证失败：" + (result?["reason"]?.GetValue<string>() ?? "没有得到模型确认");
             VerifyStatusText.Foreground = verified ? (Brush)FindResource("Mint") : Brushes.Firebrick;
-            await LoadSelectedAgentAsync();
+            await RefreshAgentsAsync();
         });
     }
 
@@ -213,10 +214,10 @@ public partial class MainWindow : Window
         await RunBusyAsync(async () =>
         {
             await RefreshModeAsync(quiet: true);
+            await RefreshProfileAsync();
             await RefreshAgentsAsync();
         });
     }
-
     private async Task RefreshModeAsync(bool quiet)
     {
         if (string.IsNullOrWhiteSpace(_workspaceRoot) || !Directory.Exists(_workspaceRoot))
@@ -241,22 +242,86 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task RefreshAgentsAsync()
+    private async Task RefreshProfileAsync()
     {
         if (string.IsNullOrWhiteSpace(_workspaceRoot)) return;
-        var agents = await ControlCommandAsync("agents") as JsonArray ?? new JsonArray();
-        var agentOptions = agents
-            .Where(agent => agent?["id"]?.GetValue<string>() == "dsh" || agent?["id"]?.GetValue<string>() == "codex" || agent?["runtime"]?.GetValue<string>() == "external")
-            .Select(agent => new AgentOption(agent?["id"]?.GetValue<string>() ?? "", agent?["displayName"]?.GetValue<string>() ?? "Agent"))
+        var profile = await ControlCommandAsync("configuration", "--workspace", _workspaceRoot);
+        FixedAssignmentToggle.IsChecked = profile?["profile"]?.GetValue<string>() == "standard";
+        UpdateAssignmentVisual();
+        UpdateModeVisual();
+    }
+
+    private async void AssignmentMode_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy) return;
+        var useFixed = FixedAssignmentToggle.IsChecked == true;
+        if (string.IsNullOrWhiteSpace(_workspaceRoot))
+        {
+            FixedAssignmentToggle.IsChecked = false;
+            UpdateAssignmentVisual();
+            FooterStatus.Text = "先选择项目，再保存这个项目的分工模式。";
+            return;
+        }
+        await RunBusyAsync(async () =>
+        {
+            try
+            {
+                await ControlCommandAsync("save-profile", "--workspace", _workspaceRoot, "--profile", useFixed ? "standard" : "auto");
+                UpdateAssignmentVisual();
+                UpdateModeVisual();
+                FooterStatus.Text = useFixed ? "已为此项目启用固定分工。" : "已为此项目启用 Sol 自主分配。";
+            }
+            catch
+            {
+                FixedAssignmentToggle.IsChecked = !useFixed;
+                UpdateAssignmentVisual();
+                UpdateModeVisual();
+                throw;
+            }
+        });
+    }
+
+    private void UpdateAssignmentVisual()
+    {
+        var fixedRoles = FixedAssignmentToggle.IsChecked == true;
+        AssignmentModeText.Text = fixedRoles ? "标准固定分工" : "指挥自主分配";
+        AssignmentDescription.Text = fixedRoles
+            ? "Sol 规划与验收 · DeepSeek V4.1 Flash（DSH）负责前端 · 当前 Codex 会话选择 GPT 负责后端。"
+            : "未勾选：Sol 根据任务、已检测 Agent 与已验证模型安排工作；原生 Codex GPT 由当前会话启动。";
+        FixedAssignmentToggle.IsEnabled = !string.IsNullOrWhiteSpace(_workspaceRoot) && !_busy;
+    }
+    private async Task RefreshAgentsAsync()
+    {
+        var probeWorkspace = Directory.Exists(_workspaceRoot) ? _workspaceRoot : ProjectRoot;
+        var discoveries = await ControlCommandAsync("discover", "--workspace", probeWorkspace) as JsonArray ?? new JsonArray();
+        _agentDiscovery.Clear();
+        foreach (var item in discoveries.OfType<JsonObject>())
+        {
+            var id = item["id"]?.GetValue<string>();
+            if (!string.IsNullOrWhiteSpace(id)) _agentDiscovery[id] = item;
+        }
+        var agentOptions = discoveries
+            .OfType<JsonObject>()
+            .Select(agent => new AgentOption(agent["id"]?.GetValue<string>() ?? "", agent["displayName"]?.GetValue<string>() ?? "Agent"))
             .Where(agent => !string.IsNullOrWhiteSpace(agent.Id))
             .ToList();
-        var customCount = agentOptions.Count(agent => agent.Id is not ("dsh" or "codex"));
-        AgentSummary.Text = customCount == 0
-            ? "2 个内置 Agent · DSH：ACP · Codex：GPT"
-            : $"2 个内置 Agent · 已添加 {customCount} 个 ACP Agent";
-        ExternalAgentsText.Text = customCount == 0
-            ? "只显示内置连接器与明确添加的 Agent，不扫描其他程序。"
-            : "已添加：" + string.Join(" · ", agentOptions.Where(agent => agent.Id is not ("dsh" or "codex")).Select(agent => agent.DisplayName)) + "。";
+        var connected = discoveries.OfType<JsonObject>().Count(agent => agent["availability"]?.GetValue<string>() == "available");
+        var modelCount = discoveries.OfType<JsonObject>().Sum(agent => (agent["models"] as JsonArray)?.Count ?? 0);
+        AgentSummary.Text = $"Agent {agentOptions.Count} · ACP 在线 {connected} · 模型 {modelCount}";
+        ExternalAgentsText.Text = discoveries.Count == 0
+            ? "还没有配置可检测的 Agent。ACP 连接需由你明确添加。"
+            : string.Join(" · ", discoveries.OfType<JsonObject>().Select(agent =>
+            {
+                var name = agent["displayName"]?.GetValue<string>() ?? "Agent";
+                var state = agent["availability"]?.GetValue<string>() switch
+                {
+                    "available" => "已连接",
+                    "session-managed" => "由当前会话管理",
+                    _ => "未连接",
+                };
+                var count = (agent["models"] as JsonArray)?.Count ?? 0;
+                return $"{name}：{state}，{count} 个模型";
+            }));
         var selectedId = (AgentPicker.SelectedItem as AgentOption)?.Id ?? "dsh";
         _ignoreAgentSelection = true;
         AgentPicker.ItemsSource = agentOptions;
@@ -264,7 +329,6 @@ public partial class MainWindow : Window
         _ignoreAgentSelection = false;
         if (AgentPicker.SelectedItem is AgentOption) await LoadSelectedAgentAsync();
     }
-
     private async Task LoadSelectedAgentAsync()
     {
         if (AgentPicker.SelectedItem is not AgentOption selected || string.IsNullOrWhiteSpace(_workspaceRoot)) return;
@@ -285,10 +349,12 @@ public partial class MainWindow : Window
             _ignoreModelSelection = false;
             return;
         }
+        var probe = _agentDiscovery.TryGetValue(selected.Id, out var discoveredAgent)
+            ? discoveredAgent
+            : await ControlCommandAsync("probe", "--agent-id", selected.Id, "--workspace", _workspaceRoot) as JsonObject;
         AgentConnectionText.Text = "ACP · 正在读取";
         AgentConnectionText.Foreground = (Brush)FindResource("TextSoft");
         AgentModelText.Text = "正在与所选 Agent 握手并读取公开模型…";
-        var probe = await ControlCommandAsync("probe", "--agent-id", selected.Id, "--workspace", _workspaceRoot);
         var connected = probe?["connected"]?.GetValue<bool>() == true;
         var connection = probe?["connection"];
         var protocol = connection is JsonObject ? connection["protocol"]?.GetValue<string>() : connection?.GetValue<string>();
@@ -296,15 +362,23 @@ public partial class MainWindow : Window
         AgentConnectionText.Text = connected ? $"{protocol ?? "ACP"} · {transport ?? "stdio"} · 已连接" : "ACP · 未连接";
         AgentConnectionText.Foreground = connected ? (Brush)FindResource("Mint") : Brushes.Firebrick;
         var modelApi = probe?["modelApi"]?["type"]?.GetValue<string>() ?? "unknown";
-        var provider = probe?["provider"]?["id"]?.GetValue<string>() ?? "Agent 公布";
         var models = probe?["models"] as JsonArray ?? new JsonArray();
+        var providers = models.OfType<JsonObject>()
+            .Select(model => model["providerId"]?.GetValue<string>())
+            .Where(providerId => !string.IsNullOrWhiteSpace(providerId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var provider = probe?["provider"]?["id"]?.GetValue<string>()
+            ?? (providers.Length == 0 ? "未公布" : string.Join(", ", providers));
         foreach (var item in models)
         {
             if (item is null) continue;
+            var modelName = item["name"]?.GetValue<string>() ?? item["modelId"]?.GetValue<string>() ?? "未知模型";
+            var providerId = item["providerId"]?.GetValue<string>() ?? "";
             var option = new ModelOption(
-                item["name"]?.GetValue<string>() ?? item["modelId"]?.GetValue<string>() ?? "未知模型",
+                string.IsNullOrWhiteSpace(providerId) ? modelName : $"{modelName} · {providerId}",
                 item["modelId"]?.GetValue<string>() ?? "",
-                item["providerId"]?.GetValue<string>() ?? "",
+                providerId,
                 item["status"]?.GetValue<string>() ?? "unknown",
                 true);
             if (!string.IsNullOrWhiteSpace(option.ModelId)) _agentModels.Add(option);
@@ -314,8 +388,14 @@ public partial class MainWindow : Window
         ModelPicker.SelectedItem = _agentModels.FirstOrDefault(model => selected.Id == "dsh" && model.ModelId == "deepseek-flash" && model.ProviderId == "deepseek-account")
             ?? _agentModels.FirstOrDefault();
         _ignoreModelSelection = false;
+        var capabilitySummary = probe?["capabilities"] switch
+        {
+            JsonArray list when list.Count > 0 => string.Join(", ", list.Select(capability => capability?.ToString()).Where(value => !string.IsNullOrWhiteSpace(value))),
+            JsonObject map when map.Count > 0 => string.Join(", ", map.Select(capability => capability.Key)),
+            _ => "未公布能力清单",
+        };
         AgentModelText.Text = connected
-            ? $"模型 API {modelApi} · Provider {provider} · {_agentModels.Count} 个公开选项"
+            ? $"模型 API {modelApi} · Provider {provider} · {_agentModels.Count} 个公开选项 · 能力 {capabilitySummary}"
             : probe?["error"]?.GetValue<string>() ?? "没有完成 ACP 握手。请检查程序路径和 ACP stdio 配置。";
         await UpdateSelectedModelStatusAsync(probe);
     }
@@ -338,6 +418,7 @@ public partial class MainWindow : Window
     private async Task RunBusyAsync(Func<Task> action)
     {
         _busy = true;
+        UpdateAssignmentVisual();
         ModeToggle.IsEnabled = false;
         VerifyModelButton.IsEnabled = false;
         ConnectCodexButton.IsEnabled = false;
@@ -350,6 +431,7 @@ public partial class MainWindow : Window
         finally
         {
             _busy = false;
+            UpdateAssignmentVisual();
             ModeToggle.IsEnabled = !string.IsNullOrWhiteSpace(_workspaceRoot);
             VerifyModelButton.IsEnabled = ModelPicker.SelectedItem is ModelOption model && model.IsSelectable;
             ConnectCodexButton.IsEnabled = true;
@@ -439,9 +521,11 @@ public partial class MainWindow : Window
         ToggleLabel.Foreground = _enabled ? new SolidColorBrush(Color.FromRgb(0x12, 0x38, 0x31)) : (Brush)FindResource("TextMain");
         ToggleLabel.Margin = _enabled ? new Thickness(4, 0, 31, 0) : new Thickness(32, 0, 3, 0);
         ToggleThumb.RenderTransform = new TranslateTransform(_enabled ? 96 : 0, 0);
-        ModeDescription.Text = _enabled
-            ? "Sol 主控 · DSH 前端 · GPT 后端由当前 Codex 会话派发"
-            : "团队分工未启用；Codex 按普通模式工作";
+        ModeDescription.Text = !_enabled
+            ? "团队分工未启用；Codex 按普通模式工作"
+            : FixedAssignmentToggle.IsChecked == true
+                ? "Sol 主控 · DeepSeek V4.1 Flash · GPT 由 Codex 指派"
+                : "Sol 主控 · 自动选择可用 Agent 与模型";
         if (string.IsNullOrWhiteSpace(_workspaceRoot)) ModeToggle.IsEnabled = false;
         else ModeToggle.IsEnabled = !_busy;
     }
@@ -463,29 +547,6 @@ public partial class MainWindow : Window
         BeginAnimation(HeightProperty, animation);
     }
 
-    private static void EnableAcrylicBackdrop(IntPtr handle)
-    {
-        var policy = new AccentPolicy { State = 4, Flags = 2, GradientColor = unchecked((int)0x80F5EFE7), AnimationId = 0 };
-        var size = Marshal.SizeOf<AccentPolicy>();
-        var memory = Marshal.AllocHGlobal(size);
-        try
-        {
-            Marshal.StructureToPtr(policy, memory, false);
-            var data = new WindowCompositionAttributeData { Attribute = 19, Data = memory, SizeOfData = size };
-            _ = SetWindowCompositionAttribute(handle, ref data);
-        }
-        finally { Marshal.FreeHGlobal(memory); }
-    }
-
     private sealed record AgentOption(string Id, string DisplayName);
     private sealed record ModelOption(string DisplayName, string ModelId, string ProviderId, string Status, bool IsSelectable);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct AccentPolicy { public int State; public int Flags; public int GradientColor; public int AnimationId; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct WindowCompositionAttributeData { public int Attribute; public IntPtr Data; public int SizeOfData; }
-
-    [DllImport("user32.dll")]
-    private static extern int SetWindowCompositionAttribute(IntPtr windowHandle, ref WindowCompositionAttributeData data);
 }

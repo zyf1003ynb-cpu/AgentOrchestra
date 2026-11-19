@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provide a simple project-level switch for coordinating work from the user's existing Codex conversation. Sol plans and reviews; DeepSeek Harness with DeepSeek V4.1 Flash handles frontend changes; a user-selected GPT subagent in Codex handles backend changes. With the switch off, normal Codex work continues.
+Provide a simple project-level switch for coordinating work from the user's existing Codex conversation. Sol plans and reviews. With team mode enabled, automatic assignment is the default; an optional fixed-role setting assigns frontend changes to DeepSeek Harness with DeepSeek V4.1 Flash and backend changes to a user-selected GPT subagent in Codex. With team mode off, normal Codex work continues.
 
 ## Version 0.1.1 scope
 

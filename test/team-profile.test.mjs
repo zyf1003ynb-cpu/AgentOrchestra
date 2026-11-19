@@ -6,39 +6,51 @@ import path from "node:path";
 import { TeamProfile } from "../src/team-profile.mjs";
 
 const temp = (name) => mkdtemp(path.join(tmpdir(), `${name}-`));
-
 const registry = { isVerifiedAssignment: async () => false };
+const standardRoles = {
+  frontend: { agentId: "dsh", providerId: "deepseek-account", modelId: "deepseek-flash" },
+  backend: { agentId: "codex", providerId: "openai", modelId: "select-per-task" },
+};
 
-test("standard profile keeps the approved fixed frontend and task-selected Codex GPT backend", async () => {
+test("automatic profile is the default and fixed roles remain optional", async () => {
   const root = await temp("profile-state");
   const workspace = await temp("profile-workspace");
   const profile = new TeamProfile({ stateRoot: root, registry });
-  const initial = await profile.get(workspace);
-  assert.equal(initial.profile, "standard");
-  assert.deepEqual(initial.roles.frontend, { agentId: "dsh", providerId: "deepseek-account", modelId: "deepseek-flash" });
-  assert.deepEqual(initial.roles.backend, { agentId: "codex", providerId: "openai", modelId: "select-per-task" });
-  const saved = await profile.save(workspace, initial);
-  assert.deepEqual(saved.roles, initial.roles);
-  assert.deepEqual((await profile.get(workspace)).roles, initial.roles);
+  assert.deepEqual(await profile.get(workspace), { profile: "auto", roles: null, updatedAt: null });
+  const automatic = await profile.save(workspace, { profile: "auto" });
+  assert.equal(automatic.profile, "auto");
+  assert.equal(automatic.roles, null);
+  assert.equal((await profile.get(workspace)).profile, "auto");
+  const fixed = await profile.save(workspace, { profile: "standard", roles: standardRoles });
+  assert.equal(fixed.profile, "standard");
+  assert.deepEqual(fixed.roles, standardRoles);
+  assert.deepEqual((await profile.get(workspace)).roles, standardRoles);
 });
 
-test("standard profile rejects changed role mappings and refuses custom mode", async () => {
+test("fixed profile uses the approved role map when saved from the panel toggle", async () => {
   const root = await temp("profile-state");
   const workspace = await temp("profile-workspace");
   const profile = new TeamProfile({ stateRoot: root, registry });
-  const initial = await profile.get(workspace);
-  await assert.rejects(() => profile.save(workspace, { ...initial, roles: { ...initial.roles, frontend: { agentId: "codex", providerId: "openai", modelId: "gpt-custom" } } }), /roles are fixed/);
-  await assert.rejects(() => profile.save(workspace, { ...initial, profile: "custom" }), /standard team/);
-  assert.equal((await profile.get(workspace)).updatedAt, null);
+  const fixed = await profile.save(workspace, { profile: "standard" });
+  assert.deepEqual(fixed.roles, standardRoles);
+  assert.deepEqual((await profile.get(workspace)).roles, standardRoles);
 });
 
-test("standard role mapping stays inside the selected workspace identity", async () => {
+test("profile rejects changed fixed mappings and unknown mode names", async () => {
+  const root = await temp("profile-state");
+  const workspace = await temp("profile-workspace");
+  const profile = new TeamProfile({ stateRoot: root, registry });
+  await assert.rejects(() => profile.save(workspace, { profile: "standard", roles: { ...standardRoles, frontend: { agentId: "codex", providerId: "openai", modelId: "gpt-custom" } } }), /roles are fixed/);
+  await assert.rejects(() => profile.save(workspace, { profile: "custom", roles: standardRoles }), /profile must be auto or standard/);
+  assert.deepEqual(await profile.get(workspace), { profile: "auto", roles: null, updatedAt: null });
+});
+
+test("team profile stays inside the selected workspace identity", async () => {
   const root = await temp("profile-state");
   const first = await temp("profile-first");
   const second = await temp("profile-second");
   const profile = new TeamProfile({ stateRoot: root, registry });
-  const initial = await profile.get(first);
-  await profile.save(first, initial);
+  await profile.save(first, { profile: "standard", roles: standardRoles });
   assert.ok(await readFile(path.join(root, "projects", (await import("node:crypto")).default.createHash("sha256").update(`directory:${first.toLowerCase()}`).digest("hex"), "team-profile.json"), "utf8"));
   assert.equal((await profile.get(second)).updatedAt, null);
 });
