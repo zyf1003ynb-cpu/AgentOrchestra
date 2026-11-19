@@ -1,0 +1,371 @@
+<Window x:Class="TeamModeControl.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Team Mode" Width="420" Height="86" MinWidth="420" MaxWidth="420"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
+        Background="Transparent" Topmost="True" ShowInTaskbar="True"
+        WindowStartupLocation="Manual" UseLayoutRounding="True"
+        SourceInitialized="Window_SourceInitialized" Loaded="Window_Loaded"
+        KeyDown="Window_KeyDown">
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextMain" Color="#FF18282D" />
+        <SolidColorBrush x:Key="TextSoft" Color="#FF52666B" />
+        <SolidColorBrush x:Key="Mint" Color="#FF167563" />
+        <SolidColorBrush x:Key="Panel" Color="#48FFFFFF" />
+        <Style x:Key="SoftButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}" />
+            <Setter Property="Background" Value="#4AFFFFFF" />
+            <Setter Property="BorderBrush" Value="#90FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ButtonSurface" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="18" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ButtonSurface" Property="Background" Value="#90FFFFFF" /></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.72" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="ButtonSurface" Property="Opacity" Value="0.42" /></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ButtonSurface" Property="BorderBrush" Value="#FF167563" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="BareButton" TargetType="Button">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BareButtonSurface" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="20">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="BareButtonSurface" Property="Background" Value="#40FFFFFF" /></Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter TargetName="BareButtonSurface" Property="Background" Value="#22FFFFFF" /></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="BareButtonSurface" Property="BorderBrush" Value="#FF167563" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter TargetName="BareButtonSurface" Property="Opacity" Value="0.42" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="GlassDropToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="GlassExpander" TargetType="Expander">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <ToggleButton x:Name="ExpanderHeader" Style="{StaticResource GlassDropToggle}"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Padding="0" Cursor="Hand">
+                                <Border Background="#40FFFFFF" BorderBrush="#70D2DEDA" BorderThickness="1" CornerRadius="16" Padding="10,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center" />
+                                        <Path x:Name="ExpanderChevron" Grid.Column="1" Data="M 1,1 L 5,5 L 9,1" Stroke="#FF53696B"
+                                              StrokeThickness="1.4" Width="10" Height="7" VerticalAlignment="Center" Margin="10,0,0,0">
+                                            <Path.RenderTransform><RotateTransform Angle="0" CenterX="5" CenterY="3" /></Path.RenderTransform>
+                                        </Path>
+                                    </Grid>
+                                </Border>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="ExpandSite" Grid.Row="1" ContentSource="Content" Visibility="Collapsed" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="ExpanderChevron" Property="RenderTransform"><Setter.Value><RotateTransform Angle="180" CenterX="5" CenterY="3" /></Setter.Value></Setter>
+                            </Trigger>
+                            <Trigger SourceName="ExpanderHeader" Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ExpanderHeader" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="GlassScrollBar" TargetType="ScrollBar">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True"
+                                   Minimum="{TemplateBinding Minimum}" Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value}" ViewportSize="{TemplateBinding ViewportSize}"
+>
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#80828F8C" BorderBrush="#80CFDAD6" BorderThickness="1" CornerRadius="3" Margin="1,0" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="PickerItemTemplate">
+            <TextBlock Text="{Binding DisplayName}" Foreground="{StaticResource TextMain}" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+        <Style x:Key="GlassField" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}" />
+            <Setter Property="Background" Value="#4AFFFFFF" />
+            <Setter Property="BorderBrush" Value="#80CFDAD6" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="11,8" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CaretBrush" Value="{StaticResource Mint}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="FieldSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="FieldSurface" Property="BorderBrush" Value="#FF167563" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="GlassCombo" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}" />
+            <Setter Property="Background" Value="#4AFFFFFF" />
+            <Setter Property="BorderBrush" Value="#90FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="DropToggle" Style="{StaticResource GlassDropToggle}" Focusable="False" ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <Border Background="#55FFFFFF" BorderBrush="#90FFFFFF" BorderThickness="1" CornerRadius="14" Padding="10,7">
+                                    <Grid>
+                                        <ContentPresenter Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                          VerticalAlignment="Center" HorizontalAlignment="Left" Margin="0,0,22,0" />
+                                        <Path Data="M 1,1 L 5,5 L 9,1" Stroke="#FF53696B" StrokeThickness="1.4" Width="10" Height="6" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Border>
+                            </ToggleButton>
+                            <Popup x:Name="PART_Popup" Placement="Bottom" AllowsTransparency="True" Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade">
+                                <Border Background="#EDF5F9F7" BorderBrush="#AEBFCFCB" BorderThickness="1" CornerRadius="14" Padding="4" MinWidth="180">
+                                    <ScrollViewer MaxHeight="220" CanContentScroll="True" Background="Transparent"><ItemsPresenter /></ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="#FF18282D" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemSurface" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="#65C8EEDF" /></Trigger>
+                            <Trigger Property="IsSelected" Value="True"><Setter TargetName="ItemSurface" Property="Background" Value="#86B7E7D4" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>    </Window.Resources>
+
+    <Border x:Name="WindowShell" CornerRadius="32" BorderThickness="1"
+            BorderBrush="#B8FFFFFF" Background="#BFEAF4F1" Padding="18,15"
+            SnapsToDevicePixels="True">
+        <Border.Effect>
+            <DropShadowEffect Color="#66777A" BlurRadius="35" ShadowDepth="14" Direction="270" Opacity="0.25" />
+        </Border.Effect>
+        <Grid ClipToBounds="True">
+            <Grid IsHitTestVisible="False">
+                <Border CornerRadius="31" Background="#38EAF6F2" />
+                <Ellipse Width="260" Height="110" HorizontalAlignment="Left" VerticalAlignment="Top"
+                         Margin="-75,-74,0,0" Fill="#3A79E4C8">
+                    <Ellipse.Effect><BlurEffect Radius="55" /></Ellipse.Effect>
+                </Ellipse>
+                <Ellipse Width="220" Height="96" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                         Margin="0,0,-100,-72" Fill="#2E91B8D4">
+                    <Ellipse.Effect><BlurEffect Radius="52" /></Ellipse.Effect>
+                </Ellipse>
+                <Border Height="78" VerticalAlignment="Top" CornerRadius="31" Opacity="0.46">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#88FFFFFF" Offset="0" />
+                            <GradientStop Color="#12FFFFFF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+                <Border CornerRadius="31" BorderThickness="1" BorderBrush="#80FFFFFF" Margin="1" />
+            </Grid>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="54" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" MouseLeftButtonDown="Header_MouseLeftButtonDown">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="30" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="32" />
+                        <ColumnDefinition Width="32" />
+                    </Grid.ColumnDefinitions>
+                    <Canvas Width="24" Height="24" VerticalAlignment="Center">
+                        <Ellipse x:Name="MarkA" Width="8" Height="8" Canvas.Left="8" Canvas.Top="1" Fill="#75879496" />
+                        <Ellipse x:Name="MarkB" Width="8" Height="8" Canvas.Left="2" Canvas.Top="12" Fill="#75879496" />
+                        <Ellipse x:Name="MarkC" Width="8" Height="8" Canvas.Left="14" Canvas.Top="12" Fill="#75879496" />
+                    </Canvas>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="4,0,8,0">
+                        <TextBlock x:Name="HeaderTitle" Text="团队模式" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" />
+                        <TextBlock x:Name="HeaderSubtitle" Text="先选择一个项目" FontSize="11" Foreground="{StaticResource TextSoft}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Border x:Name="HeaderState" Grid.Column="2" CornerRadius="15" Background="#48FFFFFF" Padding="11,6" VerticalAlignment="Center" Margin="0,0,8,0">
+                        <TextBlock x:Name="HeaderStateText" Text="OFF" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSoft}" />
+                    </Border>
+                    <Button x:Name="CollapseButton" Grid.Column="3" Style="{StaticResource SoftButton}" Padding="4" Background="#00FFFFFF" BorderBrush="#00FFFFFF"
+                            Click="CollapseButton_Click" ToolTip="展开或收起">
+                        <Path x:Name="Chevron" Width="10" Height="7" Stroke="#FF53696B" StrokeThickness="1.5" Data="M 1,1 L 5,5 L 9,1" />
+                    </Button>
+                    <Button x:Name="CloseButton" Grid.Column="4" Style="{StaticResource SoftButton}" Padding="4" Background="#00FFFFFF" BorderBrush="#00FFFFFF"
+                            Click="CloseButton_Click" ToolTip="关闭控制面板" Visibility="Collapsed">
+                        <Path Width="9" Height="9" Stroke="#FF53696B" StrokeThickness="1.5" Data="M 1,1 L 8,8 M 8,1 L 1,8" />
+                    </Button>
+                </Grid>
+
+                <ScrollViewer x:Name="ExpandedPanel" Grid.Row="1" Background="Transparent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              Visibility="Collapsed" Margin="0,4,0,0" Focusable="False">
+                    <ScrollViewer.Resources>
+                        <Style TargetType="ScrollBar" BasedOn="{StaticResource GlassScrollBar}" />
+                    </ScrollViewer.Resources>
+                    <StackPanel Margin="1,0,1,4">
+                        <Border Height="1" Background="#70B8C8C3" Margin="0,0,0,13" />
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Margin="1,0,10,0">
+                                <TextBlock Text="当前项目" FontSize="11" Foreground="{StaticResource TextSoft}" />
+                                <TextBlock x:Name="ProjectPathText" Text="尚未选择" Margin="0,5,0,0" FontSize="12" FontWeight="Medium" Foreground="{StaticResource TextMain}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="选择项目" Style="{StaticResource SoftButton}" Click="ChooseProject_Click" />
+                        </Grid>
+
+                        <Grid Margin="1,0,0,15">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="团队模式" FontSize="11" Foreground="{StaticResource TextSoft}" />
+                                <TextBlock x:Name="ModeValue" Text="OFF" FontSize="32" FontWeight="SemiBold" Foreground="{StaticResource TextSoft}" Margin="0,-1,0,0" />
+                                <TextBlock x:Name="ModeDescription" Text="团队分工未启用" FontSize="11" Foreground="{StaticResource TextSoft}" TextWrapping="Wrap" MaxWidth="240" />
+                            </StackPanel>
+                            <Button x:Name="ModeToggle" Grid.Column="1" Style="{StaticResource BareButton}" Click="ModeToggle_Click" Background="Transparent" BorderThickness="0" Padding="0" VerticalAlignment="Center" AutomationProperties.Name="切换团队模式">
+                                <Border x:Name="ToggleTrack" Width="142" Height="46" CornerRadius="23" Background="#4AFFFFFF" BorderBrush="#8094ADA8" BorderThickness="1" Padding="5">
+                                    <Grid>
+                                        <TextBlock x:Name="ToggleLabel" Text="开启团队" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="32,0,3,0" />
+                                        <Ellipse x:Name="ToggleThumb" Width="34" Height="34" HorizontalAlignment="Left" Fill="#FFFFFFFF">
+                                            <Ellipse.Effect><DropShadowEffect Color="#000000" BlurRadius="9" ShadowDepth="2" Opacity="0.3" /></Ellipse.Effect>
+                                        </Ellipse>
+                                    </Grid>
+                                </Border>
+                            </Button>
+                        </Grid>
+
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Agent 与模型" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" />
+                                <TextBlock x:Name="AgentSummary" Text="等待检测" FontSize="11" Foreground="{StaticResource TextSoft}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="检测" Style="{StaticResource SoftButton}" Click="RefreshAgents_Click" />
+                        </Grid>
+
+                        <Border Background="#52FFFFFF" BorderBrush="#70D2DEDA" BorderThickness="1" CornerRadius="18" Padding="12,10" Margin="0,0,0,8">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,7">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="Agent 模型目录" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" />
+                                    <TextBlock x:Name="AgentConnectionText" Grid.Column="1" Text="ACP · 等待检测" FontSize="10" Foreground="{StaticResource TextSoft}" />
+                                </Grid>
+                                <ComboBox x:Name="AgentPicker" Style="{StaticResource GlassCombo}" Height="36" ItemTemplate="{StaticResource PickerItemTemplate}" SelectionChanged="AgentPicker_SelectionChanged" Margin="0,0,0,7" />
+                                <TextBlock x:Name="AgentModelText" Text="等待读取 Agent 公布的模型" FontSize="11" Foreground="{StaticResource TextSoft}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <ComboBox x:Name="ModelPicker" Style="{StaticResource GlassCombo}" Height="36" ItemTemplate="{StaticResource PickerItemTemplate}" SelectionChanged="ModelPicker_SelectionChanged" />
+                                    <Button x:Name="VerifyModelButton" Grid.Column="1" Content="验证模型" Style="{StaticResource SoftButton}" Margin="8,0,0,0" Click="VerifyModel_Click" IsEnabled="False" />
+                                </Grid>
+                                <TextBlock x:Name="VerifyStatusText" Text="模型验证会发送一条简短请求，可能消耗少量额度；添加 Agent 不会改变固定分工。" FontSize="10" Foreground="{StaticResource TextSoft}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                <TextBlock x:Name="ExternalAgentsText" Text="" FontSize="10" Foreground="{StaticResource TextSoft}" Margin="0,7,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#52FFFFFF" BorderBrush="#70D2DEDA" BorderThickness="1" CornerRadius="18" Padding="12,10" Margin="0,0,0,8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="固定团队分工" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" />
+                                    <TextBlock Grid.Column="1" Text="标准模式" FontSize="10" Foreground="{StaticResource Mint}" />
+                                </Grid>
+                                <TextBlock Text="Sol 负责规划与验收 · DeepSeek V4.1 Flash（DSH）负责前端 · 当前 Codex 会话里的 GPT 子代理负责后端。添加的其他 Agent 可检测，但不会改变这套固定分工。" FontSize="11" Foreground="{StaticResource TextSoft}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Button x:Name="ConnectCodexButton" Content="连接到 Codex" Style="{StaticResource SoftButton}" HorizontalAlignment="Stretch" Click="ConnectCodex_Click" Margin="0,0,0,8" />
+
+                        <Expander x:Name="AddAgentExpander" Style="{StaticResource GlassExpander}" IsExpanded="False" Margin="0,5,0,0">
+                            <Expander.Header>
+                                <TextBlock Text="添加受支持的 ACP Agent" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextMain}" />
+                            </Expander.Header>
+                            <StackPanel Margin="0,7,0,0">
+                                <TextBlock Text="只连接你指定的程序；不会扫描电脑或读取密钥。命令必须支持 ACP stdio。添加后可检测模型，但不会自动加入固定团队。" FontSize="10" Foreground="{StaticResource TextSoft}" TextWrapping="Wrap" Margin="1,0,1,8" />
+                                <TextBox x:Name="AgentIdInput" Style="{StaticResource GlassField}" Height="35" Margin="0,0,0,6" ToolTip="Agent ID，例如 local-agent" />
+                                <TextBox x:Name="AgentNameInput" Style="{StaticResource GlassField}" Height="35" Margin="0,0,0,6" ToolTip="显示名称" />
+                                <TextBox x:Name="AgentCommandInput" Style="{StaticResource GlassField}" Height="35" Margin="0,0,0,6" ToolTip="ACP 程序完整路径" />
+                                <TextBox x:Name="AgentArgsInput" Style="{StaticResource GlassField}" Height="58" AcceptsReturn="True" TextWrapping="Wrap" Margin="0,0,0,8" ToolTip="命令参数 JSON 数组，可留空，例如 [&quot;--profile&quot;, &quot;acp&quot;]" />
+                                <Button Content="连接并添加" Style="{StaticResource SoftButton}" HorizontalAlignment="Right" Click="AddAgent_Click" />
+                            </StackPanel>
+                        </Expander>
+
+                        <Border Height="1" Background="#70B8C8C3" Margin="0,12,0,10" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBlock x:Name="FooterStatus" Text="团队模式按项目保存；OFF 时回到普通 Codex 行为。" FontSize="10" Foreground="{StaticResource TextSoft}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="收起" Style="{StaticResource SoftButton}" Click="CollapseButton_Click" Padding="13,7" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
